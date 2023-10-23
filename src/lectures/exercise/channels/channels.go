@@ -22,18 +22,6 @@ import (
 
 type Job int
 
-const (
-	DoExit = iota
-	ExitOk
-)
-
-type Result struct {
-	data int
-	job  Job
-}
-
-type MessageResponse int
-
 func longCalculation(i Job) int {
 	duration := time.Duration(rand.Intn(1000)) * time.Millisecond
 	time.Sleep(duration)
@@ -49,50 +37,30 @@ func makeJobs() []Job {
 	return jobs
 }
 
-func calculate(job <-chan Job, result chan<- Result, message chan MessageResponse) {
-	for {
-		select {
-		case m := <-message:
-			switch m {
-			case DoExit:
-				fmt.Println("Exit goroutine")
-				message <- ExitOk
-				return
-			default:
-				panic("unhandled control message")
-			}
-		case j := <-job:
-			calculated := longCalculation(j)
-			result <- Result{calculated, j}
-		}
-	}
+func calculate(result chan<- int, i Job) {
+	result <- longCalculation(i)
 }
 
 func main() {
 	jobs := makeJobs()
-	jobsChan := make(chan Job, len(jobs))
-	resultsChan := make(chan Result, len(jobs))
-	controlChan := make(chan MessageResponse)
-
+	resultsChan := make(chan int, len(jobs))
 	rand.Seed(time.Now().UnixNano())
 
-	go calculate(jobsChan, resultsChan, controlChan)
-
 	for _, item := range jobs {
-		jobsChan <- item
+		go calculate(resultsChan, item)
 	}
 
+	resultCount := 0
+	sum := 0
 	for {
-		select {
-		case result := <-resultsChan:
-			fmt.Println(result)
-		case <-time.After(500 * time.Microsecond):
-			fmt.Println("time out")
-			controlChan <- DoExit
-			<-controlChan
-			fmt.Println("program exit")
-			return
-
+		result := <-resultsChan
+		sum += result
+		resultCount += 1
+		if resultCount == len(jobs) {
+			break
 		}
 	}
+
+	fmt.Println("sum is", sum)
+
 }
